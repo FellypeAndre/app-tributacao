@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react';
-import { FileSpreadsheet, Download, Moon, Sun, Edit3, Building2, Upload, Plus, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, Download, Moon, Sun, Edit3, Building2, Upload, Plus, Trash2, Edit, X, Save } from 'lucide-react';
 import Papa from 'papaparse';
 
 export default function WorkspaceTributario() {
@@ -16,10 +16,17 @@ export default function WorkspaceTributario() {
   const [colunas, setColunas] = useState<string[]>([]);
   const [nomeArquivo, setNomeArquivo] = useState('');
 
+  // Estados para Edição em Massa
   const [filtroColuna, setFiltroColuna] = useState('');
+  const [operadorFiltro, setOperadorFiltro] = useState('startsWith');
   const [filtroValor, setFiltroValor] = useState('');
   const [alterarColuna, setAlterarColuna] = useState('');
   const [novoValor, setNovoValor] = useState('');
+
+  // Estados para o Modal de Edição Individual
+  const [modalAberto, setModalAberto] = useState(false);
+  const [produtoEditando, setProdutoEditando] = useState<any>(null);
+  const [indiceEditando, setIndiceEditando] = useState<number | null>(null);
 
   const adicionarEmpresa = () => {
     if (!novaEmpresaNome || !novaEmpresaCnpj) return alert("Preencha Nome e CNPJ!");
@@ -35,15 +42,12 @@ export default function WorkspaceTributario() {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Trava de segurança contra arquivos Excel (.xlsx)
     if (!file.name.toLowerCase().endsWith('.csv')) {
-      alert("Atenção: O sistema aceita apenas arquivos .CSV.\nPor favor, no Excel vá em 'Salvar Como' > 'CSV (UTF-8)' e tente importar novamente.");
+      alert("Atenção: Por enquanto o sistema aceita apenas arquivos .CSV.\n(Podemos implementar .XLSX futuramente!)");
       return;
     }
 
     setNomeArquivo(file.name);
-
-    // Leitura nativa e blindada do arquivo
     const reader = new FileReader();
     
     reader.onload = (e) => {
@@ -58,7 +62,6 @@ export default function WorkspaceTributario() {
             return;
           }
 
-          // Garantia de mapeamento das colunas
           let nomesColunas: string[] = [];
           if (results.meta && results.meta.fields) {
             nomesColunas = results.meta.fields;
@@ -69,7 +72,6 @@ export default function WorkspaceTributario() {
           setColunas(nomesColunas);
           setItens(results.data);
           
-          // Define colunas padrão para os filtros se existirem
           if (nomesColunas.length > 0) {
             setFiltroColuna(nomesColunas.find(c => c.includes('NCM')) || nomesColunas[0]);
             setAlterarColuna(nomesColunas.find(c => c.includes('CST')) || nomesColunas[0]);
@@ -82,10 +84,7 @@ export default function WorkspaceTributario() {
       });
     };
 
-    reader.onerror = () => {
-      alert("Erro do navegador ao tentar ler o arquivo físico.");
-    };
-
+    reader.onerror = () => alert("Erro do navegador ao tentar ler o arquivo físico.");
     reader.readAsText(file, 'UTF-8');
   };
 
@@ -108,8 +107,19 @@ export default function WorkspaceTributario() {
     
     let contador = 0;
     const itensAtualizados = itens.map(item => {
-      const valorAtual = item[filtroColuna] || '';
-      if (String(valorAtual).startsWith(filtroValor)) {
+      const valorAtual = String(item[filtroColuna] || '');
+      let condicaoAtendida = false;
+
+      // Lógica dos novos operadores
+      if (operadorFiltro === 'startsWith') {
+        condicaoAtendida = valorAtual.startsWith(filtroValor);
+      } else if (operadorFiltro === 'equals') {
+        condicaoAtendida = valorAtual === filtroValor;
+      } else if (operadorFiltro === 'endsWith') {
+        condicaoAtendida = valorAtual.endsWith(filtroValor);
+      }
+
+      if (condicaoAtendida) {
         contador++;
         return { ...item, [alterarColuna]: novoValor };
       }
@@ -118,6 +128,32 @@ export default function WorkspaceTributario() {
 
     setItens(itensAtualizados);
     alert(`${contador} produtos atualizados com sucesso!`);
+  };
+
+  // Funções do Modal de Edição Individual
+  const abrirModalEdicao = (item: any, index: number) => {
+    setProdutoEditando({ ...item }); // Faz uma cópia do objeto para não alterar a tabela antes de salvar
+    setIndiceEditando(index);
+    setModalAberto(true);
+  };
+
+  const fecharModal = () => {
+    setModalAberto(false);
+    setProdutoEditando(null);
+    setIndiceEditando(null);
+  };
+
+  const salvarEdicaoIndividual = () => {
+    if (indiceEditando !== null && produtoEditando) {
+      const novosItens = [...itens];
+      novosItens[indiceEditando] = produtoEditando;
+      setItens(novosItens);
+      fecharModal();
+    }
+  };
+
+  const handleMudancaModal = (coluna: string, valor: string) => {
+    setProdutoEditando({ ...produtoEditando, [coluna]: valor });
   };
 
   // VARIÁVEIS DE TEMA: PRETO E LARANJA
@@ -130,8 +166,49 @@ export default function WorkspaceTributario() {
   const cssAccentText = temaEscuro ? 'text-[#FF6B00]' : 'text-[#FF6B00]';
 
   return (
-    <div className={`min-h-screen ${cssBackground} transition-colors duration-200`}>
+    <div className={`min-h-screen ${cssBackground} transition-colors duration-200 relative`}>
       
+      {/* POP-UP / MODAL DE EDIÇÃO */}
+      {modalAberto && produtoEditando && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className={`w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl border ${temaEscuro ? 'bg-[#121212] border-[#333333]' : 'bg-white border-orange-200'}`}>
+            {/* Header do Modal */}
+            <div className={`p-5 border-b flex justify-between items-center ${temaEscuro ? 'border-[#333333]' : 'border-orange-100'}`}>
+              <h2 className={`font-bold text-lg uppercase tracking-wide ${cssAccentText}`}>Editar Produto</h2>
+              <button onClick={fecharModal} className={`p-1.5 rounded-lg hover:bg-red-500/10 hover:text-red-500 transition-colors ${cssTextMuted}`}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            {/* Corpo do Modal com Scroll */}
+            <div className="p-6 overflow-y-auto scrollbar-thin flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {colunas.map((col, idx) => (
+                <div key={idx} className="flex flex-col gap-1">
+                  <label className={`text-xs font-semibold uppercase tracking-wider ${cssTextMuted}`}>{col}</label>
+                  <input 
+                    type="text" 
+                    value={produtoEditando[col] || ''} 
+                    onChange={(e) => handleMudancaModal(col, e.target.value)}
+                    className={cssInput}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {/* Footer do Modal (Botões) */}
+            <div className={`p-5 border-t flex justify-end gap-3 ${temaEscuro ? 'border-[#333333] bg-[#0A0A0A]' : 'border-orange-100 bg-orange-50'} rounded-b-2xl`}>
+              <button onClick={fecharModal} className={`px-5 py-2.5 rounded-lg font-medium transition-colors ${temaEscuro ? 'hover:bg-[#262626] text-gray-300' : 'hover:bg-orange-100 text-gray-700'}`}>
+                Cancelar
+              </button>
+              <button onClick={salvarEdicaoIndividual} className={`px-6 py-2.5 rounded-lg flex items-center justify-center gap-2 ${cssButtonPrimary}`}>
+                <Save size={18} /> Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER */}
       <header className={`px-6 py-4 flex flex-col md:flex-row justify-between md:items-center gap-4 border-b ${cssHeader}`}>
         <div className="flex items-center gap-3">
           <div className={`p-3 rounded-xl shadow-lg ${temaEscuro ? 'bg-[#FF6B00] text-black' : 'bg-[#FF6B00] text-white'}`}>
@@ -191,6 +268,7 @@ export default function WorkspaceTributario() {
           </div>
         </div>
 
+        {/* FERRAMENTA DE EDIÇÃO EM MASSA ATUALIZADA */}
         {itens.length > 0 && (
           <div className={`${cssCard} flex flex-col md:flex-row gap-4 items-end`}>
             <div className="flex-1 w-full">
@@ -199,8 +277,18 @@ export default function WorkspaceTributario() {
                 {colunas.map(col => <option key={col} value={col}>{col}</option>)}
               </select>
             </div>
+            
+            <div className="w-40">
+              <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${cssTextMuted}`}>Condição:</label>
+              <select className={cssInput} value={operadorFiltro} onChange={(e) => setOperadorFiltro(e.target.value)}>
+                <option value="startsWith">Começar com</option>
+                <option value="equals">Igual a</option>
+                <option value="endsWith">Terminar com</option>
+              </select>
+            </div>
+
             <div className="flex-1 w-full">
-              <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${cssTextMuted}`}>Começar com:</label>
+              <label className={`block text-xs font-semibold uppercase tracking-wider mb-2 ${cssTextMuted}`}>O valor:</label>
               <input type="text" placeholder="Ex: 9..." value={filtroValor} onChange={(e) => setFiltroValor(e.target.value)} className={cssInput} />
             </div>
             <div className="flex-1 w-full">
@@ -237,6 +325,10 @@ export default function WorkspaceTributario() {
               <table className="w-full text-left border-collapse whitespace-nowrap">
                 <thead className={`sticky top-0 z-10 ${temaEscuro ? 'bg-[#0A0A0A] text-[#858585]' : 'bg-orange-50 text-gray-600'}`}>
                   <tr>
+                    {/* Nova Coluna de Ações fixada no início */}
+                    <th className={`p-4 font-bold text-xs tracking-wider uppercase border-b w-16 text-center ${temaEscuro ? 'border-[#333333]' : 'border-orange-200'}`}>
+                      Ações
+                    </th>
                     {colunas.map((col, index) => (
                       <th key={index} className={`p-4 font-bold text-xs tracking-wider uppercase border-b ${temaEscuro ? 'border-[#333333]' : 'border-orange-200'}`}>
                         {col}
@@ -247,6 +339,19 @@ export default function WorkspaceTributario() {
                 <tbody className="text-sm">
                   {itens.slice(0, 100).map((item, rowIndex) => (
                     <tr key={rowIndex} className={`border-b transition-colors hover:${temaEscuro ? 'bg-[#1A1A1A]' : 'bg-orange-50/50'} ${temaEscuro ? 'border-[#262626]' : 'border-orange-100'}`}>
+                      
+                      {/* Botão de Editar Individual */}
+                      <td className="p-4 text-center">
+                        <button 
+                          onClick={() => abrirModalEdicao(item, rowIndex)}
+                          className={`p-1.5 rounded-md transition-colors ${temaEscuro ? 'bg-[#262626] hover:bg-[#333333] text-gray-300' : 'bg-orange-100 hover:bg-orange-200 text-orange-700'}`}
+                          title="Editar Registro"
+                        >
+                          <Edit size={16} />
+                        </button>
+                      </td>
+
+                      {/* Dados da Tabela */}
                       {colunas.map((col, colIndex) => (
                         <td key={colIndex} className="p-4 text-gray-300">
                           {col.includes('NCM') || col.includes('CST') ? (
