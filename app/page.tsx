@@ -1,10 +1,14 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
-import { Download, Building2, AlertTriangle, CheckCircle2, ArrowRightLeft, Folder, PieChart as ChartIcon, Plus, ChevronLeft, Save, FileText, User, Lock, LogIn, LogOut, Search, Edit2, Check } from 'lucide-react';
+import { Download, Building2, AlertTriangle, CheckCircle2, ArrowRightLeft, Folder, PieChart as ChartIcon, Plus, ChevronLeft, Save, FileText, User, Lock, LogIn, LogOut, Search, Edit2, Check, FileDown } from 'lucide-react';
 import Papa from 'papaparse';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { createClient } from '@supabase/supabase-js';
+
+// IMPORTAÇÕES DO GERADOR DE PDF
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // ==========================================
 // CONFIGURAÇÃO DO SUPABASE
@@ -14,20 +18,44 @@ const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ==========================================
-// 1. COMPONENTE PRINCIPAL
+// 1. COMPONENTE PRINCIPAL (COM PERSISTÊNCIA DE SESSÃO)
 // ==========================================
 export default function AppPrincipal() {
   const [sessao, setSessao] = useState<{ id: string, cnpj: string, usuario: string } | null>(null);
+  const [carregandoSessao, setCarregandoSessao] = useState(true);
 
-  if (!sessao) {
-    return <TelaLogin onLogin={(dados) => setSessao(dados)} />;
+  // Verifica se o usuário já estava logado antes do F5
+  useEffect(() => {
+    const sessaoSalva = localStorage.getItem('taxAuditorSession');
+    if (sessaoSalva) {
+      setSessao(JSON.parse(sessaoSalva));
+    }
+    setCarregandoSessao(false);
+  }, []);
+
+  const handleLogin = (dados: { id: string, cnpj: string, usuario: string }) => {
+    setSessao(dados);
+    localStorage.setItem('taxAuditorSession', JSON.stringify(dados)); // Salva no navegador
+  };
+
+  const handleLogout = () => {
+    setSessao(null);
+    localStorage.removeItem('taxAuditorSession'); // Limpa ao sair
+  };
+
+  if (carregandoSessao) {
+    return <div className="min-h-screen bg-gray-50 flex items-center justify-center text-[#10B981] font-bold uppercase tracking-widest">Carregando Workspace...</div>;
   }
 
-  return <ConciliadorTributario empresaLogada={sessao} onLogout={() => setSessao(null)} />;
+  if (!sessao) {
+    return <TelaLogin onLogin={handleLogin} />;
+  }
+
+  return <ConciliadorTributario empresaLogada={sessao} onLogout={handleLogout} />;
 }
 
 // ==========================================
-// 2. TELA DE LOGIN (COM BANCO DE DADOS)
+// 2. TELA DE LOGIN
 // ==========================================
 function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, usuario: string }) => void }) {
   const [cnpj, setCnpj] = useState('');
@@ -38,34 +66,23 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
     return valor.replace(/\D/g, '').replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2').slice(0, 18);
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const executarLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (cnpj.length < 18) return alert("Digite um CNPJ válido.");
     if (!senha) return alert("Preencha a senha.");
     
     setCarregando(true);
-    
-    // Consulta real no banco de dados
-    const { data, error } = await supabase
-      .from('empresas')
-      .select('*')
-      .eq('cnpj', cnpj)
-      .eq('senha', senha)
-      .single();
-
+    const { data, error } = await supabase.from('empresas').select('*').eq('cnpj', cnpj).eq('senha', senha).maybeSingle();
     setCarregando(false);
 
-    if (error || !data) {
-      alert("CNPJ ou senha incorretos! Verifique o cadastro no banco de dados.");
-      return;
-    }
+    if (error) return alert(`Erro no banco de dados: ${error.message}`);
+    if (!data) return alert("⚠️ Acesso Negado!\n\nNenhuma empresa encontrada com esses dados.");
 
     onLogin({ id: data.id, cnpj: data.cnpj, usuario: data.nome });
   };
 
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gray-50">
-      
       <style dangerouslySetInnerHTML={{__html: `
         .parallax > use { animation: move-forever 25s cubic-bezier(.55,.5,.45,.5) infinite; }
         .parallax > use:nth-child(1) { animation-delay: -2s; animation-duration: 7s; }
@@ -74,7 +91,6 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
         .parallax > use:nth-child(4) { animation-delay: -5s; animation-duration: 20s; }
         @keyframes move-forever { 0% { transform: translate3d(-90px,0,0); } 100% { transform: translate3d(85px,0,0); } }
       `}} />
-
       <div className="absolute bottom-0 left-0 w-full h-[50vh] z-0 overflow-hidden">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" viewBox="0 24 150 28" preserveAspectRatio="none" shapeRendering="auto">
           <defs><path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z" /></defs>
@@ -86,17 +102,13 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
           </g>
         </svg>
       </div>
-
       <div className="relative z-10 w-full max-w-md p-8 rounded-3xl border border-white/60 shadow-[0_8px_32px_0_rgba(16,185,129,0.15)] backdrop-blur-2xl bg-white/40">
         <div className="flex flex-col items-center mb-8">
-          <div className="p-4 bg-[#10B981] rounded-2xl shadow-lg shadow-[#10B981]/30 mb-4 text-white">
-            <Building2 size={36} />
-          </div>
+          <div className="p-4 bg-[#10B981] rounded-2xl shadow-lg shadow-[#10B981]/30 mb-4 text-white"><Building2 size={36} /></div>
           <h1 className="text-2xl font-bold text-gray-800 tracking-widest uppercase drop-shadow-sm">Tax Auditor Pro</h1>
           <p className="text-sm text-gray-600 mt-2 text-center font-medium">Acesso seguro ao workspace</p>
         </div>
-
-        <form onSubmit={handleLogin} className="space-y-5">
+        <form onSubmit={executarLogin} className="space-y-5">
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">CNPJ da Empresa</label>
             <div className="relative">
@@ -104,7 +116,6 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
               <input type="text" value={cnpj} onChange={(e) => setCnpj(mascaraCnpj(e.target.value))} placeholder="00.000.000/0000-00" className="w-full pl-10 pr-4 py-3 bg-white/60 border border-white/50 rounded-xl text-gray-800 placeholder-gray-500 font-medium outline-none focus:bg-white focus:border-[#10B981] transition-all backdrop-blur-md" maxLength={18} />
             </div>
           </div>
-
           <div className="space-y-1">
             <label className="text-xs font-bold text-gray-700 uppercase tracking-wider">Senha</label>
             <div className="relative">
@@ -112,7 +123,6 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
               <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)} placeholder="••••••••" className="w-full pl-10 pr-4 py-3 bg-white/60 border border-white/50 rounded-xl text-gray-800 placeholder-gray-500 font-medium outline-none focus:bg-white focus:border-[#10B981] transition-all backdrop-blur-md" />
             </div>
           </div>
-
           <button type="submit" disabled={carregando} className="w-full py-3.5 mt-4 bg-[#10B981] hover:bg-[#059669] text-white font-bold uppercase tracking-wider rounded-xl flex justify-center items-center gap-2 transition-all shadow-lg">
             {carregando ? 'Validando...' : <><LogIn size={20} /> Acessar Sistema</>}
           </button>
@@ -123,7 +133,7 @@ function TelaLogin({ onLogin }: { onLogin: (dados: { id: string, cnpj: string, u
 }
 
 // ==========================================
-// 3. SISTEMA DE AUDITORIA (CONECTADO)
+// 3. SISTEMA DE AUDITORIA 
 // ==========================================
 function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { id: string, cnpj: string, usuario: string }, onLogout: () => void }) {
   const [telaAtiva, setTelaAtiva] = useState<'historico' | 'nova' | 'dashboard'>('historico');
@@ -136,25 +146,19 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [novoTituloPasta, setNovoTituloPasta] = useState('');
 
-  // Busca inicial das pastas no banco de dados
   useEffect(() => {
     buscarAuditoriasDoBanco();
   }, []);
 
   const buscarAuditoriasDoBanco = async () => {
     setCarregandoDados(true);
-    const { data, error } = await supabase
-      .from('auditorias')
-      .select('*')
-      .eq('empresa_id', empresaLogada.id)
-      .order('created_at', { ascending: false });
-
+    const { data, error } = await supabase.from('auditorias').select('*').eq('empresa_id', empresaLogada.id).order('created_at', { ascending: false });
     if (!error && data) {
       const pastasFormatadas = data.map(dbPasta => ({
         id: dbPasta.id,
         data: new Date(dbPasta.data_criacao || dbPasta.created_at).toLocaleDateString('pt-BR'),
         nome: dbPasta.nome_pasta,
-        ...dbPasta.dados_json // Carrega o JSON com os itens, gráficos e planilhas
+        ...dbPasta.dados_json
       }));
       setTodasPastas(pastasFormatadas);
     }
@@ -162,7 +166,7 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
   };
 
   const pastasFiltradas = todasPastas.filter(p => p.nome.toLowerCase().includes(buscaPasta.toLowerCase()) || p.data.includes(buscaPasta));
-  const divergenciasFiltradas = pastaSelecionada?.divergencias.filter((div: any) => div.produto.toLowerCase().includes(buscaProduto.toLowerCase()) || String(div.chave).includes(buscaProduto)) || [];
+  const divergenciasFiltradas = pastaSelecionada?.divergencias?.filter((div: any) => div.produto.toLowerCase().includes(buscaProduto.toLowerCase()) || String(div.chave).includes(buscaProduto)) || [];
 
   const [planilhaA, setPlanilhaA] = useState<any[]>([]);
   const [nomeArquivoA, setNomeArquivoA] = useState('');
@@ -179,15 +183,8 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
 
   const salvarNovoTitulo = async () => {
     if (!novoTituloPasta.trim()) { setEditandoTitulo(false); return; }
-    
-    // Atualiza no banco
     const { error } = await supabase.from('auditorias').update({ nome_pasta: novoTituloPasta }).eq('id', pastaSelecionada.id);
-    
-    if (error) {
-      alert("Erro ao atualizar o nome da pasta no banco.");
-      return;
-    }
-
+    if (error) return alert("Erro ao atualizar o nome da pasta no banco.");
     const pastasAtualizadas = todasPastas.map(p => p.id === pastaSelecionada.id ? { ...p, nome: novoTituloPasta } : p);
     setTodasPastas(pastasAtualizadas);
     setPastaSelecionada({ ...pastaSelecionada, nome: novoTituloPasta });
@@ -258,7 +255,6 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
         });
       }
     });
-
     setDivergencias(relatorioDivergencias);
     setComparacaoFeita(true);
   };
@@ -278,34 +274,23 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
     divergencias.forEach(div => { errosPorColuna[div.colunaDivergente] = (errosPorColuna[div.colunaDivergente] || 0) + 1; });
     const dadosGraficoBarras = Object.keys(errosPorColuna).map(key => ({ coluna: key, erros: errosPorColuna[key] })).sort((a, b) => b.erros - a.erros);
 
-    // Estrutura JSON que será salva no Supabase
+    // OTIMIZAÇÃO: Salvamos a Planilha Corrigida e as Divergências. Ignoramos as originais.
     const dadosJson = {
       estatisticas: { total: totalProdutos, comErro: produtosComErro, corretos: produtosCorretos },
       dadosGraficoBarras,
       divergencias: divergencias,
-      arquivos: { contabilidade: planilhaA, sistemaOriginal: planilhaB, sistemaCorrigido: planilhaCorrigida }
+      arquivos: { sistemaCorrigido: planilhaCorrigida } // Omitimos contabilidade e sistema antigo
     };
 
     const novaDataCriacao = new Date().toISOString();
 
-    const { data, error } = await supabase
-      .from('auditorias')
-      .insert([{ 
-        empresa_id: empresaLogada.id, 
-        nome_pasta: nomeNovaAuditoria,
-        data_criacao: novaDataCriacao,
-        dados_json: dadosJson 
-      }])
-      .select()
-      .single();
+    const { data, error } = await supabase.from('auditorias').insert([{ 
+        empresa_id: empresaLogada.id, nome_pasta: nomeNovaAuditoria, data_criacao: novaDataCriacao, dados_json: dadosJson 
+    }]).select().single();
 
     setSalvandoNoBanco(false);
 
-    if (error || !data) {
-      alert("Erro ao salvar no banco de dados. Verifique a conexão.");
-      console.error(error);
-      return;
-    }
+    if (error || !data) return alert(`Erro do Supabase: ${error?.message}`);
 
     const novaPastaFrontend = {
       id: data.id,
@@ -319,6 +304,7 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
   };
 
   const baixarPlanilha = (dados: any[], nomeBase: string) => {
+    if (!dados || dados.length === 0) return alert("Planilha não disponível no banco de dados.");
     const csv = Papa.unparse(dados);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -327,6 +313,52 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  // ==========================================
+  // FUNÇÃO DE GERAR PDF (jsPDF + autoTable)
+  // ==========================================
+  const gerarPDFRelatorio = () => {
+    if (!pastaSelecionada || !pastaSelecionada.divergencias) return;
+
+    const doc = new jsPDF('landscape'); // Formato paisagem para caber a tabela
+    
+    // Cabeçalho do PDF
+    doc.setFontSize(14);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`Relatório de Auditoria Fiscal - ${pastaSelecionada.nome}`, 14, 15);
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text(`Empresa (CNPJ): ${empresaLogada.cnpj}   |   Data da Conciliação: ${pastaSelecionada.data}`, 14, 22);
+    doc.text(`Total de Produtos Corrigidos: ${pastaSelecionada.estatisticas.comErro}`, 14, 28);
+
+    // Corpo da Tabela
+    const linhas = pastaSelecionada.divergencias.map((div: any) => [
+      div.chave,
+      String(div.produto).substring(0, 45), // Limita o tamanho do texto para não quebrar a linha
+      div.colunaDivergente,
+      div.valorSistema || '(vazio)',
+      div.valorContabilidade || '(vazio)'
+    ]);
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['Cód / Chave', 'Descrição do Produto', 'Campo Corrigido', 'Estava no Sistema', 'Atualizado Para']],
+      body: linhas,
+      theme: 'grid',
+      headStyles: { fillColor: [16, 185, 129] }, // Cor Esmeralda #10B981
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 'auto' },
+        2: { cellWidth: 40 },
+        3: { cellWidth: 30, textColor: [239, 68, 68] }, // Vermelho
+        4: { cellWidth: 30, textColor: [16, 185, 129], fontStyle: 'bold' } // Verde
+      }
+    });
+
+    doc.save(`Auditoria_${pastaSelecionada.nome.replace(/\s+/g, '_')}.pdf`);
   };
 
   const cssCard = 'p-5 rounded-xl border shadow-sm bg-white border-emerald-100';
@@ -345,7 +377,6 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
             <p className="text-xs font-semibold uppercase tracking-wider text-[#059669]">CNPJ: {empresaLogada.cnpj}</p>
           </div>
         </div>
-        
         <div className="flex items-center gap-4">
           <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50">
             <User size={14} className="text-[#059669]" />
@@ -356,7 +387,6 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
       </header>
 
       <main className="p-6 max-w-7xl mx-auto space-y-6">
-
         {/* TELA 1: HISTÓRICO */}
         {telaAtiva === 'historico' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -479,9 +509,17 @@ function ConciliadorTributario({ empresaLogada, onLogout }: { empresaLogada: { i
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => baixarPlanilha(pastaSelecionada.arquivos.contabilidade, `Contabilidade_${pastaSelecionada.nome}`)} className="p-2 px-4 rounded-lg flex items-center gap-2 text-xs font-bold uppercase border border-gray-300 hover:bg-gray-100 text-gray-600"><FileText size={14}/> Base Contábil</button>
-                <button onClick={() => baixarPlanilha(pastaSelecionada.arquivos.sistemaOriginal, `Sistema_Com_Erro_${pastaSelecionada.nome}`)} className="p-2 px-4 rounded-lg flex items-center gap-2 text-xs font-bold uppercase border border-red-200 hover:bg-red-50 text-red-600"><FileText size={14}/> Original (Erros)</button>
-                <button onClick={() => baixarPlanilha(pastaSelecionada.arquivos.sistemaCorrigido, `SISTEMA_CORRIGIDO_${pastaSelecionada.nome}`)} className={`p-2 px-4 rounded-lg flex items-center gap-2 text-xs font-bold uppercase ${cssButtonPrimary}`}><Download size={14}/> Baixar Corrigida</button>
+                {/* BOTÃO DO GERADOR DE PDF NOVO */}
+                <button onClick={gerarPDFRelatorio} className="p-2 px-4 rounded-lg flex items-center gap-2 text-xs font-bold uppercase border border-blue-200 hover:bg-blue-50 text-blue-600">
+                  <FileDown size={14}/> Relatório PDF
+                </button>
+                
+                {/* SOMENTE A PLANILHA CORRIGIDA */}
+                {pastaSelecionada.arquivos?.sistemaCorrigido && (
+                  <button onClick={() => baixarPlanilha(pastaSelecionada.arquivos.sistemaCorrigido, `SISTEMA_CORRIGIDO_${pastaSelecionada.nome}`)} className={`p-2 px-4 rounded-lg flex items-center gap-2 text-xs font-bold uppercase ${cssButtonPrimary}`}>
+                    <Download size={14}/> Baixar Planilha Corrigida
+                  </button>
+                )}
               </div>
             </div>
 
