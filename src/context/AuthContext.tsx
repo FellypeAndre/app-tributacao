@@ -25,6 +25,7 @@ interface AuthContextType {
   login: (dadosUser: Usuario) => void;
   selecionarEmpresa: (empresa: Empresa) => void; // Função para alternar clientes
   logout: () => void;
+  atualizarUsuario: (novosDados: Partial<Usuario>) => void; // A NOSSA FUNÇÃO MÁGICA AQUI
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -92,6 +93,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setEmpresaAtiva(empresa);
   };
 
+  // ============================================================================
+  // FUNÇÃO MÁGICA: Atualiza o estado visual e a memória (localStorage) na mesma hora
+  // ============================================================================
+  const atualizarUsuario = (novosDados: Partial<Usuario>) => {
+    setUser((userAntigo) => {
+      if (!userAntigo) return null;
+      
+      const userAtualizado = { ...userAntigo, ...novosDados };
+      
+      // Salva no localStorage para não perder a edição se o usuário apertar F5
+      localStorage.setItem('@TaxAuditor:user', JSON.stringify(userAtualizado));
+      
+      return userAtualizado;
+    });
+  };
+
   const logout = () => {
     localStorage.removeItem('@TaxAuditor:token');
     localStorage.removeItem('@TaxAuditor:user');
@@ -101,7 +118,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, empresaAtiva, loading, login, selecionarEmpresa, logout }}>
+    <AuthContext.Provider value={{ user, empresaAtiva, loading, login, selecionarEmpresa, logout, atualizarUsuario }}>
       {children}
     </AuthContext.Provider>
   );

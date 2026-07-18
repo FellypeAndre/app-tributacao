@@ -9,7 +9,8 @@ import { AuditService } from '../../../services/auditService';
 import { executarComparacao, Divergencia } from '../../../core/comparisonEngine';
 
 export default function NovaConciliacao() {
-  const { user } = useAuth();
+  // Puxamos apenas a empresaAtiva (o user não é mais necessário para salvar a pasta)
+  const { empresaAtiva } = useAuth();
   const router = useRouter();
 
   const [planilhaA, setPlanilhaA] = useState<any[]>([]);
@@ -26,7 +27,7 @@ export default function NovaConciliacao() {
   const [nomeNovaAuditoria, setNomeNovaAuditoria] = useState('');
   const [salvando, setSalvando] = useState(false);
 
- const lerCSV = (file: File, isPlanilhaA: boolean) => {
+  const lerCSV = (file: File, isPlanilhaA: boolean) => {
     if (!file.name.toLowerCase().endsWith('.csv')) return alert("Envie um arquivo .CSV.");
     
     if (isPlanilhaA) setNomeArquivoA(file.name); 
@@ -39,14 +40,12 @@ export default function NovaConciliacao() {
         header: true, 
         skipEmptyLines: true,
         complete: (results) => {
-          // CORREÇÃO: Avisamos ao TypeScript que isso é um Array válido
           const dataArray = results.data as any[]; 
 
           if (!dataArray || dataArray.length === 0) return alert("Arquivo vazio.");
           
           if (isPlanilhaA) {
             setPlanilhaA(dataArray);
-            // Agora o TypeScript sabe que dataArray[0] existe
             const cols = results.meta?.fields || Object.keys(dataArray[0]);
             setColunasA(cols);
             setChavePrimaria(cols.find(c => c.toUpperCase().includes('BARRA') || c.toUpperCase().includes('CODIGO')) || cols[0]);
@@ -58,18 +57,23 @@ export default function NovaConciliacao() {
     };
     reader.readAsText(file, 'UTF-8');
   };
+
   const handleComparar = () => {
     if (!chavePrimaria) return alert("Selecione a chave (ex: CODIGO_BARRA).");
     if (planilhaA.length === 0 || planilhaB.length === 0) return alert("Importe as duas planilhas!");
 
-    // Chama o nosso motor isolado!
     const relatorio = executarComparacao(planilhaA, planilhaB, chavePrimaria);
     setDivergencias(relatorio);
     setComparacaoFeita(true);
   };
 
   const salvarAuditoriaBanco = async () => {
+    // 🛡️ TRAVA DE SEGURANÇA 1: Garante que o nome foi preenchido
     if (!nomeNovaAuditoria) return alert("Dê um nome para esta auditoria.");
+    
+    // 🛡️ TRAVA DE SEGURANÇA 2: Garante que a empresa está selecionada no sistema
+    if (!empresaAtiva) return alert("Nenhuma empresa selecionada. Volte e selecione um cliente.");
+    
     setSalvando(true);
     
     try {
@@ -77,7 +81,7 @@ export default function NovaConciliacao() {
       const produtosComErro = new Set(divergencias.map(d => d.chave)).size;
       const produtosCorretos = totalProdutos - produtosComErro;
 
-     const errosPorColuna: Record<string, number> = {};
+      const errosPorColuna: Record<string, number> = {};
       divergencias.forEach(div => { 
         errosPorColuna[div.colunaDivergente] = (errosPorColuna[div.colunaDivergente] || 0) + 1; 
       });
@@ -85,7 +89,7 @@ export default function NovaConciliacao() {
       const dadosGraficoBarras = Object.keys(errosPorColuna)
         .map(key => ({ coluna: key, erros: errosPorColuna[key] }))
         .sort((a, b) => b.erros - a.erros)
-        .slice(0, 20); // MÁGICA: Pega só as 20 piores colunas. Isso garante que o payload seja minúsculo!
+        .slice(0, 20); 
 
       const divergenciasResumo = divergencias.length > 200 ? divergencias.slice(0, 200) : divergencias;
 
@@ -95,11 +99,11 @@ export default function NovaConciliacao() {
         divergencias: divergenciasResumo 
       };
 
-      // Chama o nosso Serviço de Banco de Dados
-      await AuditService.salvarAuditoria(user!.id, nomeNovaAuditoria, payload);
+      // 🔒 O SEGREDO AQUI: Passamos empresaAtiva.id como o dono absoluto desta auditoria
+      await AuditService.salvarAuditoria(empresaAtiva.id, nomeNovaAuditoria, payload);
 
       alert("Auditoria processada e salva com sucesso!");
-      router.push('/workspace'); // Volta pro grid de pastas automaticamente
+      router.push('/workspace/auditoria'); // Volta para a central de auditorias correta
 
     } catch (error: any) {
       alert(`Erro crítico ao salvar: ${error.message}`);
@@ -113,7 +117,7 @@ export default function NovaConciliacao() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       <button 
-        onClick={() => router.push('/workspace')} 
+        onClick={() => router.push('/workspace/auditoria')} 
         className="flex items-center gap-2 text-sm font-semibold mb-2 text-[#059669] hover:opacity-80"
       >
         <ChevronLeft size={16}/> Voltar para Pastas

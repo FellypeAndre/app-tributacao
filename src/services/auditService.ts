@@ -2,11 +2,14 @@ import { supabase } from '../lib/supabase';
 
 export const AuditService = {
   
+  // ==========================================
+  // 1. LISTAR TODAS (Filtra apenas as da empresa ativa)
+  // ==========================================
   async buscarAuditorias(empresaId: string) {
     const { data, error } = await supabase
       .from('auditorias')
       .select('*')
-      .eq('empresa_id', empresaId)
+      .eq('empresa_id', empresaId) // Filtro Mágico
       .order('data_criacao', { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -19,14 +22,18 @@ export const AuditService = {
     }));
   },
 
-  async buscarAuditoriaPorId(id: string) {
+  // ==========================================
+  // 2. BUSCAR ESPECÍFICA (Trava dupla de segurança)
+  // ==========================================
+  async buscarAuditoriaPorId(id: string, empresaId: string) {
     const { data, error } = await supabase
       .from('auditorias')
       .select('*')
       .eq('id', id)
+      .eq('empresa_id', empresaId) // Garante que o usuário logado é dono dessa auditoria
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) throw new Error('Auditoria não encontrada ou acesso negado.');
 
     return {
       id: data.id,
@@ -36,6 +43,9 @@ export const AuditService = {
     };
   },
 
+  // ==========================================
+  // 3. SALVAR NOVA (Vinculada à empresa ativa)
+  // ==========================================
   async salvarAuditoria(empresaId: string, nomePasta: string, dadosJson: any) {
     const novaDataCriacao = new Date().toISOString();
 
@@ -60,21 +70,28 @@ export const AuditService = {
     };
   },
 
-  async atualizarNomePasta(id: string, novoNome: string) {
+  // ==========================================
+  // 4. ATUALIZAR NOME (Trava dupla)
+  // ==========================================
+  async atualizarNomePasta(id: string, novoNome: string, empresaId: string) {
     const { error } = await supabase
       .from('auditorias')
       .update({ nome_pasta: novoNome })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('empresa_id', empresaId); // Ninguém altera nome de pasta dos outros
 
     if (error) throw new Error(error.message);
   },
 
-  // NOVO MÉTODO: Exclui a pasta definitivamente do banco
-  async excluirAuditoria(id: string) {
+  // ==========================================
+  // 5. EXCLUIR (Trava dupla)
+  // ==========================================
+  async excluirAuditoria(id: string, empresaId: string) {
     const { error } = await supabase
       .from('auditorias')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('empresa_id', empresaId); // Ninguém apaga pasta dos outros
 
     if (error) throw new Error(error.message);
   }

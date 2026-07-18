@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { ChevronLeft, Folder, PieChart as ChartIcon, AlertTriangle, Search, FileDown, Trash2, Edit2, Check, FileSpreadsheet } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { AuditService } from '../../../../services/auditService';
+import { useAuth } from '../../../../context/AuthContext'; // 1. IMPORTANDO O CONTEXTO DE AUTENTICAÇÃO
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import Papa from 'papaparse';
@@ -16,6 +17,9 @@ export default function DashboardAuditoria() {
   const router = useRouter();
   const id = params.id as string;
 
+  // 2. INJETANDO A EMPRESA ATIVA
+  const { empresaAtiva } = useAuth(); 
+
   const [pasta, setPasta] = useState<any>(null);
   const [carregando, setCarregando] = useState(true);
   const [buscaProduto, setBuscaProduto] = useState('');
@@ -26,12 +30,18 @@ export default function DashboardAuditoria() {
   const [renderizarGraficos, setRenderizarGraficos] = useState(false);
 
   useEffect(() => {
-    if (id) carregarDados();
-  }, [id]);
+    // 3. SEGURANÇA: Só tenta carregar os dados se o sistema já sabe qual é a empresa ativa
+    if (id && empresaAtiva) {
+      carregarDados();
+    }
+  }, [id, empresaAtiva]);
 
   const carregarDados = async () => {
+    if (!empresaAtiva) return; // Trava extra
+    
     try {
-      const dados = await AuditService.buscarAuditoriaPorId(id);
+      // 4. PASSANDO O ID DA EMPRESA NA BUSCA
+      const dados = await AuditService.buscarAuditoriaPorId(id, empresaAtiva.id);
       setPasta(dados);
       setNovoNome(dados.nome);
       
@@ -39,8 +49,8 @@ export default function DashboardAuditoria() {
       setTimeout(() => { setRenderizarGraficos(true); }, 150);
 
     } catch (error) {
-      alert("Erro ao carregar pasta. Ela pode ter sido excluída.");
-      router.push('/workspace');
+      alert("Erro ao carregar pasta. Ela pode ter sido excluída ou pertence a outro cliente.");
+      router.push('/workspace/auditoria'); // Manda de volta pra lista se der erro
     }
   };
 
@@ -51,10 +61,11 @@ export default function DashboardAuditoria() {
   };
 
   const handleSalvarNome = async () => {
-    if (!novoNome.trim()) { setEditandoNome(false); return; }
+    if (!novoNome.trim() || !empresaAtiva) { setEditandoNome(false); return; }
     setProcessandoAcao(true);
     try {
-      await AuditService.atualizarNomePasta(id, novoNome);
+      // 5. PASSANDO O ID DA EMPRESA PARA ATUALIZAR
+      await AuditService.atualizarNomePasta(id, novoNome, empresaAtiva.id);
       setPasta({ ...pasta, nome: novoNome });
       setEditandoNome(false);
     } catch (error: any) {
@@ -65,13 +76,16 @@ export default function DashboardAuditoria() {
   };
 
   const handleExcluirAuditoria = async () => {
+    if (!empresaAtiva) return;
+    
     const confirmar = window.confirm("Tem certeza que deseja excluir permanentemente esta auditoria?");
     if (!confirmar) return;
     
     setProcessandoAcao(true);
     try {
-      await AuditService.excluirAuditoria(id);
-      router.push('/workspace');
+      // 6. PASSANDO O ID DA EMPRESA PARA EXCLUIR
+      await AuditService.excluirAuditoria(id, empresaAtiva.id);
+      router.push('/workspace/auditoria');
     } catch (error: any) {
       alert(`Erro ao excluir: ${error.message}`);
       setProcessandoAcao(false);
@@ -118,7 +132,6 @@ export default function DashboardAuditoria() {
     }));
 
     const csv = Papa.unparse(linhasFormatadas);
-    // Adiciona o BOM do UTF-8 para o Excel Brasileiro abrir com os acentos (ç, á) corretos
     const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -163,7 +176,6 @@ export default function DashboardAuditoria() {
 
   const cssCard = 'p-5 rounded-xl border shadow-sm bg-white border-emerald-100';
 
-  // O "Segredo" das animações Uiverse convertidas em Tailwind para React Sênior
   const btnUiverseBase = "relative flex justify-center items-center gap-2 px-5 py-2.5 rounded-lg overflow-hidden z-10 shadow-[4px_8px_10px_-3px_rgba(0,0,0,0.356)] transition-all duration-300 text-white font-bold uppercase text-xs";
   const btnEfeitoFundo = "before:absolute before:left-0 before:top-0 before:h-full before:w-0 before:-z-10 before:transition-all before:duration-300 hover:before:w-full";
 
@@ -172,7 +184,7 @@ export default function DashboardAuditoria() {
       
       <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 border-b pb-4 border-gray-200">
         <div>
-          <button onClick={() => router.push('/workspace')} className="flex items-center gap-2 text-sm font-semibold mb-3 text-[#059669] hover:opacity-80">
+          <button onClick={() => router.push('/workspace/auditoria')} className="flex items-center gap-2 text-sm font-semibold mb-3 text-[#059669] hover:opacity-80">
             <ChevronLeft size={16}/> Voltar para Pastas
           </button>
           
@@ -205,7 +217,6 @@ export default function DashboardAuditoria() {
           </div>
         </div>
         
-        {/* BOTÕES COM A ANIMAÇÃO UIVERSE IMPLEMENTADA NO PADRÃO REACT */}
         <div className="flex flex-wrap gap-3">
           <button onClick={handleExcluirAuditoria} disabled={processandoAcao} className={`${btnUiverseBase} ${btnEfeitoFundo} bg-red-600 before:bg-red-500`}>
             <Trash2 size={16}/> {processandoAcao ? 'Aguarde...' : 'Excluir'}
