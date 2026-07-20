@@ -15,7 +15,6 @@ export default function RelatorioAuditoria() {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
-  // Evita o erro de rota 'nova'
   useEffect(() => {
     if (params.id === 'nova') return;
     carregarAuditoria();
@@ -39,20 +38,18 @@ export default function RelatorioAuditoria() {
     }
   };
 
-  // ==========================================
-  // O MOTOR DE INTEGRAÇÃO (Gera o JSON para o Robô)
-  // ==========================================
   const handleAprovarParaERP = async () => {
     setEnviando(true);
     try {
-      // 1. Pega os erros e transforma em comandos limpos para o Banco Local
-      const comandosDeCorrecao = auditoria.dados.divergencias.map((div: any) => ({
-        chave_busca: div.chave, // Ex: Código de Barras
-        coluna_erp: div.colunaDivergente, // Ex: NCM, CEST
+      // CORREÇÃO: Uso de ?. e || [] para garantir que não quebre se dados estiver vazio
+      const divergencias = auditoria?.dados?.divergencias || [];
+      
+      const comandosDeCorrecao = divergencias.map((div: any) => ({
+        chave_busca: div.chave, 
+        coluna_erp: div.colunaDivergente, 
         valor_correto: div.valorCorreto
       }));
 
-      // 2. Monta o Pacote JSON (Payload)
       const payloadRobo = {
         auditoria_id: auditoria.id,
         empresa_id: auditoria.empresa_id,
@@ -61,7 +58,6 @@ export default function RelatorioAuditoria() {
         comandos: comandosDeCorrecao
       };
 
-      // 3. Salva no Supabase e muda o status para o Robô vir buscar
       const { error } = await supabase
         .from('auditorias')
         .update({
@@ -72,7 +68,6 @@ export default function RelatorioAuditoria() {
 
       if (error) throw error;
 
-      // 4. Atualiza a tela
       setAuditoria({ ...auditoria, status_sincronizacao: 'LIBERADO_PARA_ROBO', payload_sincronizacao: payloadRobo });
       alert("Sucesso! As correções estão na fila. O Agente Local do cliente fará a atualização do banco em breve.");
 
@@ -90,53 +85,56 @@ export default function RelatorioAuditoria() {
   const isConcluido = auditoria.status_sincronizacao === 'CONCLUIDO';
   const isCliente = user?.nivel_acesso === 'CLIENTE';
 
+  // CORREÇÃO: Extração segura dos dados
+  const estatisticas = auditoria?.dados?.estatisticas || { total: 0, comErro: 0, corretos: 0 };
+  const divergencias = auditoria?.dados?.divergencias || [];
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       
-      {/* NAVEGAÇÃO */}
       <button onClick={() => router.push('/workspace/auditoria')} className="flex items-center gap-2 text-sm font-semibold mb-2 text-[#059669] hover:opacity-80">
         <ChevronLeft size={16}/> Voltar para Pastas
       </button>
 
-      {/* CABEÇALHO DO RELATÓRIO */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b pb-6 border-gray-200">
         <div>
           <h1 className="text-2xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-3">
-            {auditoria.nome}
+            {auditoria.nome || 'Relatório sem nome'}
             {isConcluido && <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] rounded-full flex items-center gap-1"><CheckCircle2 size={12}/> SINCRONIZADO NO ERP</span>}
           </h1>
           <p className="text-gray-500 mt-1 text-sm font-medium">Relatório gerado em {new Date(auditoria.created_at).toLocaleDateString('pt-BR')}</p>
         </div>
       </div>
 
-      {/* CARDS DE ESTATÍSTICAS */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="h-14 w-14 rounded-full bg-gray-50 flex items-center justify-center text-gray-400"><Database size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Analisado</p>
-            <p className="text-2xl font-black text-gray-700">{auditoria.dados.estatisticas.total}</p>
+            {/* CORREÇÃO APLICADA AQUI */}
+            <p className="text-2xl font-black text-gray-700">{estatisticas.total}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center text-red-500"><AlertTriangle size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Com Erros (Divergências)</p>
-            <p className="text-2xl font-black text-red-500">{auditoria.dados.estatisticas.comErro}</p>
+            {/* CORREÇÃO APLICADA AQUI */}
+            <p className="text-2xl font-black text-red-500">{estatisticas.comErro}</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm flex items-center gap-4">
           <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500"><CheckCircle2 size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Itens Corretos</p>
-            <p className="text-2xl font-black text-emerald-500">{auditoria.dados.estatisticas.corretos}</p>
+            {/* CORREÇÃO APLICADA AQUI */}
+            <p className="text-2xl font-black text-emerald-500">{estatisticas.corretos}</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* COLUNA ESQUERDA: LISTA DE ERROS */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-6 border-b border-gray-100 bg-gray-50/50">
             <h2 className="font-bold text-gray-700 uppercase tracking-wider text-sm">Detalhamento dos Erros (Top 200)</h2>
@@ -152,20 +150,28 @@ export default function RelatorioAuditoria() {
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
-                {auditoria.dados.divergencias.map((div: any, i: number) => (
-                  <tr key={i} className="hover:bg-gray-50/50 transition-colors">
-                    <td className="p-4 font-semibold text-gray-700">{div.chave}</td>
-                    <td className="p-4 font-bold text-gray-500">{div.colunaDivergente}</td>
-                    <td className="p-4 text-red-500 font-medium bg-red-50/20">{div.valorPlanilha || 'Vazio'}</td>
-                    <td className="p-4 text-emerald-600 font-bold bg-emerald-50/20">{div.valorCorreto || 'Vazio'}</td>
+                {/* CORREÇÃO APLICADA AQUI: map em array seguro */}
+                {divergencias.length > 0 ? (
+                  divergencias.map((div: any, i: number) => (
+                    <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="p-4 font-semibold text-gray-700">{div.chave}</td>
+                      <td className="p-4 font-bold text-gray-500">{div.colunaDivergente}</td>
+                      <td className="p-4 text-red-500 font-medium bg-red-50/20">{div.valorPlanilha || 'Vazio'}</td>
+                      <td className="p-4 text-emerald-600 font-bold bg-emerald-50/20">{div.valorCorreto || 'Vazio'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="p-8 text-center text-gray-400 font-medium">
+                      Nenhum detalhe de erro disponível neste relatório.
+                    </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* COLUNA DIREITA: PAINEL DE INTEGRAÇÃO */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-gray-900 rounded-3xl border border-gray-800 shadow-xl overflow-hidden flex flex-col h-full">
             <div className="p-6 border-b border-gray-800 bg-black/20 flex items-center gap-3">
@@ -174,14 +180,14 @@ export default function RelatorioAuditoria() {
             </div>
             
             <div className="p-6 flex-1 flex flex-col">
-              <p className="text-gray-400 text-sm mb-6">Ao aprovar, um pacote de dados será gerado. O Agente Local do cliente (Firebird/Postgres) fará o download e atualizará o banco automaticamente.</p>
+              <p className="text-gray-400 text-sm mb-6">Ao aprovar, um pacote de dados será gerado. O Agente Local do cliente fará o download e atualizará o banco automaticamente.</p>
               
-              {/* PREVIEW DO JSON QUE O ROBÔ VAI LER */}
               <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-emerald-400/70 mb-6 overflow-hidden relative">
                 <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-black/60 pointer-events-none"></div>
                 <p>{"{"}</p>
                 <p className="pl-4">"auditoria_id": "{auditoria.id.split('-')[0]}..."</p>
-                <p className="pl-4">"total_comandos": {auditoria.dados.estatisticas.comErro},</p>
+                {/* CORREÇÃO APLICADA AQUI */}
+                <p className="pl-4">"total_comandos": {estatisticas.comErro},</p>
                 <p className="pl-4">"comandos": [{"{"}</p>
                 <p className="pl-8 text-emerald-300">"chave_busca": "...",</p>
                 <p className="pl-8 text-emerald-300">"coluna_erp": "NCM",</p>
@@ -191,10 +197,9 @@ export default function RelatorioAuditoria() {
               </div>
 
               <div className="mt-auto">
-                {/* O Cliente só visualiza, não aprova */}
                 {isCliente ? (
                   <div className="w-full py-4 text-center text-gray-500 font-bold text-xs uppercase tracking-widest bg-white/5 rounded-xl border border-white/10">
-                    Aguardando aprovação da Contabilidade
+                    Aguardando aprovação
                   </div>
                 ) : isConcluido ? (
                   <div className="w-full py-4 flex justify-center items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-widest bg-blue-900/20 rounded-xl border border-blue-500/30">
@@ -207,7 +212,7 @@ export default function RelatorioAuditoria() {
                 ) : (
                   <button 
                     onClick={handleAprovarParaERP}
-                    disabled={enviando}
+                    disabled={enviando || estatisticas.comErro === 0}
                     className="w-full py-4 rounded-xl flex items-center justify-center gap-2 font-bold shadow-[0_0_20px_rgba(16,185,129,0.3)] text-white transition-all bg-[#10B981] hover:bg-[#059669] hover:-translate-y-1 disabled:opacity-50"
                   >
                     {enviando ? 'Empacotando Dados...' : <><Send size={18}/> Aprovar Correções</>}
