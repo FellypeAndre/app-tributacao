@@ -4,29 +4,31 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileSpreadsheet, Plus, FolderSearch, Clock, ChevronRight, Folder } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
-import { AuditService } from '../../../services/auditService'; // CORRIGIDO: 3 níveis de volta ao invés de 4
+import { AuditService } from '../../../services/auditService';
 
 export default function CentralAuditorias() {
   const router = useRouter();
-  const { empresaAtiva } = useAuth();
   
+  // 1. Puxamos também o 'user' para saber o nível de acesso
+  const { empresaAtiva, user } = useAuth();
+  
+  // 2. REGRA DE NEGÓCIO: Verifica se é apenas visualizador
+  const isCliente = user?.nivel_acesso === 'CLIENTE';
+
   const [auditorias, setAuditorias] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // MÁGICA DO FILTRO: Sempre que a empresa ativa mudar, ele recarrega a lista correta
   useEffect(() => {
     if (empresaAtiva) {
       carregarLista();
     }
   }, [empresaAtiva]);
 
- const carregarLista = async () => {
-    // 🛡️ A TRAVA DO TYPESCRIPT: Garante que a função pare aqui se não houver empresa
+  const carregarLista = async () => {
     if (!empresaAtiva) return;
 
     setCarregando(true);
     try {
-      // 🔒 O FILTRO APLICADO NA PRÁTICA: Passamos o ID da empresa para o serviço
       const dados = await AuditService.buscarAuditorias(empresaAtiva.id);
       setAuditorias(dados);
     } catch (error) {
@@ -50,12 +52,15 @@ export default function CentralAuditorias() {
           </p>
         </div>
         
-        <button 
-          onClick={() => router.push('/workspace/auditoria/nova')}
-          className="relative flex justify-center items-center gap-2 px-6 py-3 rounded-xl overflow-hidden z-10 shadow-[0_8px_30px_rgb(16,185,129,0.2)] transition-all duration-300 text-white font-bold uppercase text-sm bg-[#10B981] hover:bg-[#059669] hover:-translate-y-1"
-        >
-          <Plus size={20} /> Nova Auditoria
-        </button>
+        {/* MÁGICA AQUI: O botão de Nova Auditoria some para os Clientes */}
+        {!isCliente && (
+          <button 
+            onClick={() => router.push('/workspace/auditoria/nova')}
+            className="relative flex justify-center items-center gap-2 px-6 py-3 rounded-xl overflow-hidden z-10 shadow-[0_8px_30px_rgb(16,185,129,0.2)] transition-all duration-300 text-white font-bold uppercase text-sm bg-[#10B981] hover:bg-[#059669] hover:-translate-y-1"
+          >
+            <Plus size={20} /> Nova Auditoria
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
@@ -72,9 +77,9 @@ export default function CentralAuditorias() {
         ) : auditorias.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
             <Clock size={48} className="text-gray-300 mb-4" />
-            <h3 className="font-bold text-gray-600 text-lg">Nenhuma auditoria encontrada</h3>
+            <h3 className="font-bold text-gray-600 text-lg">Nenhum relatório disponível</h3>
             <p className="text-gray-400 text-sm mt-2 max-w-md mx-auto">
-              Você ainda não realizou nenhum cruzamento de dados para o cliente <strong className="text-gray-500">{empresaAtiva?.razao_social}</strong>.
+              Ainda não existem cruzamentos de dados liberados para <strong className="text-gray-500">{empresaAtiva?.razao_social}</strong>.
             </p>
           </div>
         ) : (
@@ -100,7 +105,7 @@ export default function CentralAuditorias() {
                 
                 {pasta.estatisticas && (
                   <p className="text-xs text-gray-500 font-medium">
-                    {pasta.estatisticas.comErro} erros encontrados
+                    {pasta.estatisticas.comErro} inconsistências
                   </p>
                 )}
 

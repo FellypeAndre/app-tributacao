@@ -25,17 +25,46 @@ export default function SelecionarEmpresa() {
     carregarEmpresasPermitidas();
   }, [user, router]);
 
-  const carregarEmpresasPermitidas = async () => {
+ const carregarEmpresasPermitidas = async () => {
     try {
+      // ==========================================
+      // REGRA 1: O MASTER VÊ TUDO (Bypass)
+      // ==========================================
+      if (user?.nivel_acesso === 'MASTER') {
+        const { data, error } = await supabase
+          .from('empresas')
+          .select('id, cnpj, razao_social')
+          .order('razao_social', { ascending: true });
+
+        if (error) throw error;
+        setEmpresas(data || []);
+        setCarregando(false);
+        return; // Finaliza a função aqui para o Master
+      }
+
+      // ==========================================
+      // REGRA 2: ADMINS E CLIENTES (Busca Vínculos)
+      // ==========================================
       const { data, error } = await supabase
         .from('usuario_empresa')
-        .select('empresas ( id, cnpj, razao_social )')
+        .select(`
+          empresas (
+            id,
+            cnpj,
+            razao_social
+          )
+        `)
         .eq('usuario_id', user?.id);
 
       if (error) throw error;
 
       if (data) {
-        const listaLimpa = data.map((item: any) => item.empresas);
+        // O EXTRATOR BLINDADO: Resolve o problema do Hendry
+        // Ele verifica se o Supabase devolveu um Array ou um Objeto, e tira os "nulos"
+        const listaLimpa = data
+          .map((item: any) => Array.isArray(item.empresas) ? item.empresas[0] : item.empresas)
+          .filter(Boolean); // Garante que empresas que foram apagadas do banco não quebrem a lista
+        
         listaLimpa.sort((a, b) => a.razao_social.localeCompare(b.razao_social));
         setEmpresas(listaLimpa);
       }
@@ -45,7 +74,7 @@ export default function SelecionarEmpresa() {
       setCarregando(false);
     }
   };
-
+  
   const handleEscolherEmpresa = (empresa: Empresa) => {
     selecionarEmpresa(empresa);
     router.push('/workspace');

@@ -44,15 +44,17 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   };
 
   // ==========================================
-  // NOVO MENU LIMPO E OBJETIVO
+  // FILTRO DINÂMICO DE MENUS BASEADO NO PERFIL
   // ==========================================
+  const isAdminOuMaster = user?.nivel_acesso === 'ADMIN' || user?.nivel_acesso === 'MASTER';
+
   const menuItens = [
-    { nome: 'Início', icone: <LayoutDashboard size={24} />, rota: '/workspace' },
-    { nome: 'Auditorias', icone: <FileSpreadsheet size={24} />, rota: '/workspace/auditoria' },
-    { nome: 'Empresas', icone: <Building size={24} />, rota: '/workspace/empresas' },
-    { nome: 'Usuários', icone: <Users size={24} />, rota: '/workspace/usuarios' },
-    { nome: 'Meu Perfil', icone: <UserCircle size={24} />, rota: '/workspace/perfil' },
-  ];
+    { nome: 'Início', icone: <LayoutDashboard size={24} />, rota: '/workspace', mostrar: true },
+    { nome: 'Auditorias', icone: <FileSpreadsheet size={24} />, rota: '/workspace/auditoria', mostrar: true },
+    { nome: 'Empresas', icone: <Building size={24} />, rota: '/workspace/empresas', mostrar: isAdminOuMaster },
+    { nome: 'Usuários', icone: <Users size={24} />, rota: '/workspace/usuarios', mostrar: isAdminOuMaster },
+    { nome: 'Meu Perfil', icone: <UserCircle size={24} />, rota: '/workspace/perfil', mostrar: true },
+  ].filter(item => item.mostrar); // A Mágica: Remove da lista os que "mostrar" for false
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden text-gray-800">

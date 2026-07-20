@@ -1,17 +1,27 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // CORREÇÃO: Importamos o useEffect
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, CheckCircle2, ArrowRightLeft, ChevronLeft, Save } from 'lucide-react';
 import Papa from 'papaparse';
-import { useAuth } from '../../../context/AuthContext';
-import { AuditService } from '../../../services/auditService';
-import { executarComparacao, Divergencia } from '../../../core/comparisonEngine';
+import { useAuth } from '../../../../context/AuthContext';
+import { AuditService } from '../../../../services/auditService';
+import { executarComparacao, Divergencia } from '../../../../core/comparisonEngine';
 
 export default function NovaConciliacao() {
-  // Puxamos apenas a empresaAtiva (o user não é mais necessário para salvar a pasta)
-  const { empresaAtiva } = useAuth();
+  // CORREÇÃO: Puxamos também o 'user' para verificar o nível de acesso
+  const { empresaAtiva, user } = useAuth();
   const router = useRouter();
+
+  // ==========================================
+  // BLOQUEIO DE ROTA (ROUTE GUARD)
+  // ==========================================
+  useEffect(() => {
+    // Se for CLIENTE tentando acessar por link direto, é expulso de volta para a lista
+    if (user?.nivel_acesso === 'CLIENTE') {
+      router.push('/workspace/auditoria');
+    }
+  }, [user, router]);
 
   const [planilhaA, setPlanilhaA] = useState<any[]>([]);
   const [nomeArquivoA, setNomeArquivoA] = useState('');
@@ -68,10 +78,7 @@ export default function NovaConciliacao() {
   };
 
   const salvarAuditoriaBanco = async () => {
-    // 🛡️ TRAVA DE SEGURANÇA 1: Garante que o nome foi preenchido
     if (!nomeNovaAuditoria) return alert("Dê um nome para esta auditoria.");
-    
-    // 🛡️ TRAVA DE SEGURANÇA 2: Garante que a empresa está selecionada no sistema
     if (!empresaAtiva) return alert("Nenhuma empresa selecionada. Volte e selecione um cliente.");
     
     setSalvando(true);
@@ -99,11 +106,10 @@ export default function NovaConciliacao() {
         divergencias: divergenciasResumo 
       };
 
-      // 🔒 O SEGREDO AQUI: Passamos empresaAtiva.id como o dono absoluto desta auditoria
       await AuditService.salvarAuditoria(empresaAtiva.id, nomeNovaAuditoria, payload);
 
       alert("Auditoria processada e salva com sucesso!");
-      router.push('/workspace/auditoria'); // Volta para a central de auditorias correta
+      router.push('/workspace/auditoria'); 
 
     } catch (error: any) {
       alert(`Erro crítico ao salvar: ${error.message}`);
@@ -113,6 +119,9 @@ export default function NovaConciliacao() {
   };
 
   const cssCard = 'p-5 rounded-xl border shadow-sm bg-white border-emerald-100';
+
+  // O React não renderiza a página se o usuário for expulso pelo useEffect
+  if (user?.nivel_acesso === 'CLIENTE') return null;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
