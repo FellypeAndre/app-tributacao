@@ -20,7 +20,7 @@ export default function RelatorioAuditoria() {
     carregarAuditoria();
   }, [params.id]);
 
-  const carregarAuditoria = async () => {
+ const carregarAuditoria = async () => {
     try {
       const { data, error } = await supabase
         .from('auditorias')
@@ -29,6 +29,16 @@ export default function RelatorioAuditoria() {
         .single();
 
       if (error) throw error;
+
+      // 🛡️ BLINDAGEM: Se o Supabase devolveu os dados como um Texto puro, converte para JSON
+      if (data.dados && typeof data.dados === 'string') {
+        try {
+          data.dados = JSON.parse(data.dados);
+        } catch (e) {
+          console.error("Erro ao converter texto para JSON:", e);
+        }
+      }
+
       setAuditoria(data);
     } catch (error) {
       alert("Erro ao carregar relatório.");
@@ -86,8 +96,8 @@ export default function RelatorioAuditoria() {
   const isCliente = user?.nivel_acesso === 'CLIENTE';
 
   // CORREÇÃO: Extração segura dos dados
-  const estatisticas = auditoria?.dados?.estatisticas || { total: 0, comErro: 0, corretos: 0 };
-  const divergencias = auditoria?.dados?.divergencias || [];
+  const estatisticas = auditoria?.dados_json?.estatisticas || { total: 0, comErro: 0, corretos: 0 };
+  const divergencias = auditoria?.dados_json?.divergencias || [];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
