@@ -26,7 +26,9 @@ export default function AppPrincipal() {
   if (loading || (user && !loading)) {
     return (
       <div className="min-h-screen bg-[#F8FAFC] flex flex-col items-center justify-center">
-        <style dangerouslySetInnerHTML={{__html: `
+        
+        {/* CORREÇÃO: Jeito nativo e limpo do React ler CSS interno */}
+        <style>{`
           .dots-container { display: flex; align-items: center; justify-content: center; }
           .dot { height: 20px; width: 20px; margin-right: 10px; border-radius: 10px; background-color: #a7f3d0; animation: pulse 1.5s infinite ease-in-out; }
           .dot:last-child { margin-right: 0; }
@@ -40,7 +42,8 @@ export default function AppPrincipal() {
             50% { transform: scale(1.2); background-color: #10B981; box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
             100% { transform: scale(0.8); background-color: #a7f3d0; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
           }
-        `}} />
+        `}</style>
+
         <section className="dots-container mb-6">
           <div className="dot"/><div className="dot"/><div className="dot"/><div className="dot"/><div className="dot"/>
         </section>
