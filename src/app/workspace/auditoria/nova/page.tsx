@@ -142,7 +142,7 @@ AND PR.CODIGO_FILIAL = 1;`;
       const payload = {
         estatisticas: { total: totalProdutos, comErro: produtosComErro, corretos: produtosCorretos },
         dadosGraficoBarras,
-        divergencias: divergencias.length > 200 ? divergencias.slice(0, 200) : divergencias 
+        divergencias: divergencias // Agora mandamos todos os milhares de erros para o banco!
       };
 
       await AuditService.salvarAuditoria(empresaAtiva.id, nomeNovaAuditoria, payload);

@@ -52,7 +52,7 @@ export default function RelatorioAuditoria() {
     setEnviando(true);
     try {
       // CORREÇÃO: Uso de ?. e || [] para garantir que não quebre se dados estiver vazio
-      const divergencias = auditoria?.dados?.divergencias || [];
+      const divergencias = auditoria?.dados_json?.divergencias || [];
       
       const comandosDeCorrecao = divergencias.map((div: any) => ({
         chave_busca: div.chave, 
@@ -162,7 +162,7 @@ export default function RelatorioAuditoria() {
               <tbody className="text-sm divide-y divide-gray-100">
                 {/* CORREÇÃO APLICADA AQUI: map em array seguro */}
                 {divergencias.length > 0 ? (
-                  divergencias.map((div: any, i: number) => (
+                  divergencias.slice(0, 200).map((div: any, i: number) => (
                     <tr key={i} className="hover:bg-gray-50/50 transition-colors">
                       <td className="p-4 font-semibold text-gray-700">{div.chave}</td>
                       <td className="p-4 font-bold text-gray-500">{div.colunaDivergente}</td>
