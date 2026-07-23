@@ -15,12 +15,29 @@ export default function RelatorioAuditoria() {
   const [carregando, setCarregando] = useState(true);
   const [enviando, setEnviando] = useState(false);
 
+  // 🛡️ CARREGAMENTO INICIAL
   useEffect(() => {
     if (params.id === 'nova') return;
     carregarAuditoria();
   }, [params.id]);
 
- const carregarAuditoria = async () => {
+  // 📡 O RADAR (F5 AUTOMÁTICO): Fica recarregando a cada 3 segundos se o robô estiver processando
+  useEffect(() => {
+    let intervalo: NodeJS.Timeout;
+    
+    if (auditoria?.status_sincronizacao === 'LIBERADO_PARA_ROBO') {
+      intervalo = setInterval(() => {
+        carregarAuditoria();
+      }, 3000);
+    }
+
+    // Limpa o radar se o status mudar para CONCLUIDO ou se sair da tela
+    return () => {
+      if (intervalo) clearInterval(intervalo);
+    };
+  }, [auditoria?.status_sincronizacao]);
+
+  const carregarAuditoria = async () => {
     try {
       const { data, error } = await supabase
         .from('auditorias')
@@ -30,7 +47,6 @@ export default function RelatorioAuditoria() {
 
       if (error) throw error;
 
-      // 🛡️ BLINDAGEM: Se o Supabase devolveu os dados como um Texto puro, converte para JSON
       if (data.dados && typeof data.dados === 'string') {
         try {
           data.dados = JSON.parse(data.dados);
@@ -51,7 +67,6 @@ export default function RelatorioAuditoria() {
   const handleAprovarParaERP = async () => {
     setEnviando(true);
     try {
-      // CORREÇÃO: Uso de ?. e || [] para garantir que não quebre se dados estiver vazio
       const divergencias = auditoria?.dados_json?.divergencias || [];
       
       const comandosDeCorrecao = divergencias.map((div: any) => ({
@@ -72,14 +87,19 @@ export default function RelatorioAuditoria() {
         .from('auditorias')
         .update({
           status_sincronizacao: 'LIBERADO_PARA_ROBO',
-          payload_sincronizacao: payloadRobo
+          payload_sincronizacao: payloadRobo,
+          log_agente: null // Limpa o log antigo se estiver reaplicando
         })
         .eq('id', auditoria.id);
 
       if (error) throw error;
 
-      setAuditoria({ ...auditoria, status_sincronizacao: 'LIBERADO_PARA_ROBO', payload_sincronizacao: payloadRobo });
-      alert("Sucesso! As correções estão na fila. O Agente Local do cliente fará a atualização do banco em breve.");
+      setAuditoria({ 
+        ...auditoria, 
+        status_sincronizacao: 'LIBERADO_PARA_ROBO', 
+        payload_sincronizacao: payloadRobo,
+        log_agente: null
+      });
 
     } catch (error: any) {
       alert(`Erro ao aprovar: ${error.message}`);
@@ -95,7 +115,6 @@ export default function RelatorioAuditoria() {
   const isConcluido = auditoria.status_sincronizacao === 'CONCLUIDO';
   const isCliente = user?.nivel_acesso === 'CLIENTE';
 
-  // CORREÇÃO: Extração segura dos dados
   const estatisticas = auditoria?.dados_json?.estatisticas || { total: 0, comErro: 0, corretos: 0 };
   const divergencias = auditoria?.dados_json?.divergencias || [];
 
@@ -121,7 +140,6 @@ export default function RelatorioAuditoria() {
           <div className="h-14 w-14 rounded-full bg-gray-50 flex items-center justify-center text-gray-400"><Database size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total Analisado</p>
-            {/* CORREÇÃO APLICADA AQUI */}
             <p className="text-2xl font-black text-gray-700">{estatisticas.total}</p>
           </div>
         </div>
@@ -129,7 +147,6 @@ export default function RelatorioAuditoria() {
           <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center text-red-500"><AlertTriangle size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Com Erros (Divergências)</p>
-            {/* CORREÇÃO APLICADA AQUI */}
             <p className="text-2xl font-black text-red-500">{estatisticas.comErro}</p>
           </div>
         </div>
@@ -137,7 +154,6 @@ export default function RelatorioAuditoria() {
           <div className="h-14 w-14 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500"><CheckCircle2 size={24}/></div>
           <div>
             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Itens Corretos</p>
-            {/* CORREÇÃO APLICADA AQUI */}
             <p className="text-2xl font-black text-emerald-500">{estatisticas.corretos}</p>
           </div>
         </div>
@@ -160,7 +176,6 @@ export default function RelatorioAuditoria() {
                 </tr>
               </thead>
               <tbody className="text-sm divide-y divide-gray-100">
-                {/* CORREÇÃO APLICADA AQUI: map em array seguro */}
                 {divergencias.length > 0 ? (
                   divergencias.slice(0, 200).map((div: any, i: number) => (
                     <tr key={i} className="hover:bg-gray-50/50 transition-colors">
@@ -192,19 +207,25 @@ export default function RelatorioAuditoria() {
             <div className="p-6 flex-1 flex flex-col">
               <p className="text-gray-400 text-sm mb-6">Ao aprovar, um pacote de dados será gerado. O Agente Local do cliente fará o download e atualizará o banco automaticamente.</p>
               
-              <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-emerald-400/70 mb-6 overflow-hidden relative">
-                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-black/60 pointer-events-none"></div>
-                <p>{"{"}</p>
-                <p className="pl-4">"auditoria_id": "{auditoria.id.split('-')[0]}..."</p>
-                {/* CORREÇÃO APLICADA AQUI */}
-                <p className="pl-4">"total_comandos": {estatisticas.comErro},</p>
-                <p className="pl-4">"comandos": [{"{"}</p>
-                <p className="pl-8 text-emerald-300">"chave_busca": "...",</p>
-                <p className="pl-8 text-emerald-300">"coluna_erp": "NCM",</p>
-                <p className="pl-8 text-emerald-300">"valor_correto": "..."</p>
-                <p className="pl-4">{"}"}, ...]</p>
-                <p>{"}"}</p>
-              </div>
+              {/* O NOVO TERMINAL DE LOG: Só aparece se tiver log do Agente */}
+              {auditoria?.log_agente ? (
+                <div className="bg-black/60 rounded-xl p-4 font-mono text-xs text-emerald-400 mb-6 overflow-y-auto max-h-56 border border-emerald-900/30 whitespace-pre-wrap">
+                  {auditoria.log_agente}
+                </div>
+              ) : (
+                <div className="bg-black/40 rounded-xl p-4 font-mono text-xs text-emerald-400/70 mb-6 overflow-hidden relative">
+                  <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-transparent to-black/60 pointer-events-none"></div>
+                  <p>{"{"}</p>
+                  <p className="pl-4">"auditoria_id": "{auditoria.id.split('-')[0]}..."</p>
+                  <p className="pl-4">"total_comandos": {estatisticas.comErro},</p>
+                  <p className="pl-4">"comandos": [{"{"}</p>
+                  <p className="pl-8 text-emerald-300">"chave_busca": "...",</p>
+                  <p className="pl-8 text-emerald-300">"coluna_erp": "NCM",</p>
+                  <p className="pl-8 text-emerald-300">"valor_correto": "..."</p>
+                  <p className="pl-4">{"}"}, ...]</p>
+                  <p>{"}"}</p>
+                </div>
+              )}
 
               <div className="mt-auto">
                 {isCliente ? (
@@ -212,8 +233,18 @@ export default function RelatorioAuditoria() {
                     Aguardando aprovação
                   </div>
                 ) : isConcluido ? (
-                  <div className="w-full py-4 flex justify-center items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-widest bg-blue-900/20 rounded-xl border border-blue-500/30">
-                    <CheckCircle2 size={18}/> Banco Atualizado
+                  <div className="flex flex-col gap-3">
+                    <div className="w-full py-4 flex justify-center items-center gap-2 text-blue-400 font-bold text-xs uppercase tracking-widest bg-blue-900/20 rounded-xl border border-blue-500/30">
+                      <CheckCircle2 size={18}/> Banco Atualizado
+                    </div>
+                    {/* NOVO BOTÃO: Reaplicar */}
+                    <button 
+                      onClick={handleAprovarParaERP}
+                      disabled={enviando}
+                      className="w-full py-2 text-xs font-bold text-gray-400 hover:text-white underline transition-colors disabled:opacity-50"
+                    >
+                      {enviando ? 'Empacotando...' : 'Aplicar Novamente'}
+                    </button>
                   </div>
                 ) : isLiberado ? (
                   <div className="w-full py-4 flex justify-center items-center gap-2 text-yellow-500 font-bold text-xs uppercase tracking-widest bg-yellow-900/20 rounded-xl border border-yellow-500/30">
